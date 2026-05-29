@@ -65,7 +65,6 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
     Returns immediately with a job_id.
     """
     # 1. Idempotency Check (If key is provided)
-    # Contractor Signal: Prevents paying for LLM APIs twice if the client network drops and retries.
     if x_idempotency_key:
         try:
             response = dynamodb_client.query(
