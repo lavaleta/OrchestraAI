@@ -120,9 +120,9 @@ def process_message(record: Dict[str, Any]):
         
     except RateLimitException as rle:
         # Calculate true exponential backoff: base_delay * (2 ^ (receive_count - 1))
-        # Attempt 1: 60 * 10^0 = 150s
-        # Attempt 2: 150 * 2^1 = 300s
-        # Attempt 3: 150 * 2^2 = 600s
+        # Attempt 1: 60 * 10^0 = 60s
+        # Attempt 2: 60 * 10^1 = 120s
+        # Attempt 3: 60 * 10^2 = 240s
         base_delay = 60
         visibility_timeout = base_delay * (10 ** (receive_count - 1))
         # Cap at 15 minutes (900 seconds) just to be safe
