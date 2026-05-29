@@ -21,7 +21,6 @@ app = FastAPI(
 @app.middleware("http")
 async def add_structured_logging_and_correlation_id(request: Request, call_next):
     """
-    Contractor Signal: Observability. 
     Injects a correlation ID into every request so we can track a single user action.
     Uses ContextVar to be safe in Python's async event loop.
     """

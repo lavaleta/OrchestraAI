@@ -46,7 +46,7 @@ class RateLimitException(Exception):
 class AIProvider(ABC):
     """
     Abstract Base Class for AI Providers.
-    Contractor Signal: Dependency Inversion. We depend on this interface, 
+    Dependency Inversion. We depend on this interface, 
     not the specific vendor SDKs, allowing easy addition of Claude/Mistral later.
     """
     @abstractmethod
