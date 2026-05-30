@@ -15,8 +15,9 @@ correlation_id_ctx: ContextVar[str] = ContextVar("correlation_id", default="unkn
 app = FastAPI(
     title="OrchestraAI API",
     description="Asynchronous AI Batch Processing Pipeline",
-    version="1.0.0"
+    version="1.0.0",
 )
+
 
 @app.middleware("http")
 async def add_structured_logging_and_correlation_id(request: Request, call_next):
@@ -26,26 +27,28 @@ async def add_structured_logging_and_correlation_id(request: Request, call_next)
     """
     # Use provided ID or generate a new UUID
     req_id = request.headers.get("x-correlation-id", str(uuid.uuid4()))
-    
+
     # Set the variable for this specific async task execution
     token = correlation_id_ctx.set(req_id)
-    
+
     start_time = time.time()
-    
+
     try:
         response = await call_next(request)
-        
+
         process_time = (time.time() - start_time) * 1000
         logger.info(
-            json.dumps({
-                "correlation_id": req_id, # Log the ID
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": response.status_code,
-                "duration_ms": round(process_time, 2)
-            })
+            json.dumps(
+                {
+                    "correlation_id": req_id,  # Log the ID
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "duration_ms": round(process_time, 2),
+                }
+            )
         )
-        
+
         # Return it to the client so they can open support tickets with this ID
         response.headers["X-Correlation-ID"] = req_id
         return response
@@ -53,9 +56,11 @@ async def add_structured_logging_and_correlation_id(request: Request, call_next)
         # CRITICAL: Reset the context to prevent memory leaks
         correlation_id_ctx.reset(token)
 
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "environment": settings.ENVIRONMENT}
+
 
 @app.post("/api/v1/jobs", response_model=JobResponse, status_code=202)
 def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
@@ -70,14 +75,20 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
                 TableName=settings.JOBS_TABLE,
                 IndexName="IdempotencyKeyIndex",
                 KeyConditionExpression="idempotency_key = :k",
-                ExpressionAttributeValues={":k": {"S": x_idempotency_key}}
+                ExpressionAttributeValues={":k": {"S": x_idempotency_key}},
             )
             if response.get("Items"):
                 existing_job_id = response["Items"][0]["job_id"]["S"]
-                logger.info(f"Idempotency hit for key {x_idempotency_key}. Returning existing job {existing_job_id}")
+                logger.info(
+                    f"Idempotency hit for key {x_idempotency_key}. Returning existing job {existing_job_id}"
+                )
                 return JSONResponse(
-                    status_code=200, 
-                    content={"job_id": existing_job_id, "status": JobStatus.PENDING.value, "message": "Idempotency key recognized. Job already in queue."}
+                    status_code=200,
+                    content={
+                        "job_id": existing_job_id,
+                        "status": JobStatus.PENDING.value,
+                        "message": "Idempotency key recognized. Job already in queue.",
+                    },
                 )
         except Exception as e:
             logger.error(f"Error checking idempotency: {str(e)}")
@@ -86,8 +97,8 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
     # 2. Generate State
     job_id = str(uuid.uuid4())
     timestamp = str(int(time.time()))
-    
-        # 3. Save Initial State to DynamoDB
+
+    # 3. Save Initial State to DynamoDB
     try:
         current_correlation_id = correlation_id_ctx.get()
         item = {
@@ -96,16 +107,15 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
             "created_at": {"S": timestamp},
             "updated_at": {"S": timestamp},
             "model_profile": {"S": job.model_profile.value},
-            "correlation_id": {"S": current_correlation_id} # Stored for end-to-end tracing
+            "correlation_id": {
+                "S": current_correlation_id
+            },  # Stored for end-to-end tracing
         }
-        
+
         if x_idempotency_key:
             item["idempotency_key"] = {"S": x_idempotency_key}
-            
-        dynamodb_client.put_item(
-            TableName=settings.JOBS_TABLE,
-            Item=item
-        )
+
+        dynamodb_client.put_item(TableName=settings.JOBS_TABLE, Item=item)
     except Exception as e:
         logger.error(f"DynamoDB PutItem Failed: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to initialize job state")
@@ -114,15 +124,15 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
     try:
         # We grab the correlation ID from the ContextVar to pass it down the pipeline
         current_correlation_id = correlation_id_ctx.get()
-        
+
         sqs_payload = {
             "job_id": job_id,
             "text_payload": job.text_payload,
             "model_profile": job.model_profile.value,
             "extraction_schema": job.extraction_schema,
-            "correlation_id": current_correlation_id # PASSED TO WORKER HERE
+            "correlation_id": current_correlation_id,  # PASSED TO WORKER HERE
         }
-        
+
         sqs_client.send_message(
             QueueUrl=settings.SQS_QUEUE_URL,
             MessageBody=json.dumps(sqs_payload),
@@ -131,13 +141,20 @@ def submit_job(job: JobRequest, x_idempotency_key: str = Header(None)):
     except Exception as e:
         logger.error(f"SQS SendMessage Failed: {str(e)}")
         # If queuing fails, we should ideally mark the DB record as FAILED, but for now we throw 500.
-        raise HTTPException(status_code=500, detail="Failed to enqueue job for processing")
+        raise HTTPException(
+            status_code=500, detail="Failed to enqueue job for processing"
+        )
 
     # 5. Return immediately (Fast API response, happy client)
     return JSONResponse(
         status_code=202,
-        content={"job_id": job_id, "status": JobStatus.PENDING.value, "message": "Job accepted and queued for processing"}
+        content={
+            "job_id": job_id,
+            "status": JobStatus.PENDING.value,
+            "message": "Job accepted and queued for processing",
+        },
     )
+
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job_status(job_id: str):
@@ -146,8 +163,7 @@ def get_job_status(job_id: str):
     """
     try:
         response = dynamodb_client.get_item(
-            TableName=settings.JOBS_TABLE,
-            Key={"job_id": {"S": job_id}}
+            TableName=settings.JOBS_TABLE, Key={"job_id": {"S": job_id}}
         )
     except Exception as e:
         logger.error(f"DynamoDB GetItem Failed: {str(e)}")
@@ -161,10 +177,10 @@ def get_job_status(job_id: str):
     result_data = None
     if "result" in item:
         result_data = json.loads(item["result"]["S"])
-        
+
     metrics_data = None
     if "metrics" in item:
-         metrics_data = json.loads(item["metrics"]["S"])
+        metrics_data = json.loads(item["metrics"]["S"])
 
     return {
         "job_id": item["job_id"]["S"],
@@ -173,8 +189,9 @@ def get_job_status(job_id: str):
         "updated_at": item["updated_at"]["S"],
         "result": result_data,
         "error_reason": item.get("error_reason", {}).get("S"),
-        "metrics": metrics_data
+        "metrics": metrics_data,
     }
+
 
 # This wraps the FastAPI app so it can be invoked by AWS Lambda / API Gateway.
 handler = Mangum(app, lifespan="off")
