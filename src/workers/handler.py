@@ -1,5 +1,4 @@
 import json
-import os
 import time
 import logging
 from typing import Dict, Any
@@ -140,7 +139,8 @@ def process_message(record: Dict[str, Any]):
         visibility_timeout = min(visibility_timeout, 9000)
 
         logger.warning(
-            f"{log_prefix} Rate limited by provider. Triggering exponential backoff of {visibility_timeout}s (Attempt {receive_count}). Details: {str(rle)}"
+            f"{log_prefix} Rate limited by provider."
+            f" Triggering exponential backoff of {visibility_timeout}s (Attempt {receive_count}). Details: {str(rle)}"
         )
 
         # Extend visibility timeout so SQS waits exactly that long before letting another worker grab it.
