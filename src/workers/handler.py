@@ -44,7 +44,8 @@ def update_job_status(job_id: str, status: str, result: Dict = None, metrics: Di
         expr_attr_values[":result"] = {"S": json.dumps(result)}
         
     if metrics is not None:
-        update_expr += ", metrics = :metrics"
+        update_expr += ", #metrics_kw = :metrics"
+        expr_attr_names["#metrics_kw"] = "metrics"
         expr_attr_values[":metrics"] = {"S": json.dumps(metrics)}
         
     if error_reason is not None:
@@ -119,10 +120,10 @@ def process_message(record: Dict[str, Any]):
         logger.info(f"{log_prefix} Job fully completed.")
         
     except RateLimitException as rle:
-        # Calculate true exponential backoff: base_delay * (2 ^ (receive_count - 1))
+        # Calculate true exponential backoff: base_delay * (10 ^ (receive_count - 1))
         # Attempt 1: 60 * 10^0 = 60s
-        # Attempt 2: 60 * 10^1 = 120s
-        # Attempt 3: 60 * 10^2 = 240s
+        # Attempt 2: 60 * 10^1 = 600s
+        # Attempt 3: 60 * 10^2 = 6000s
         base_delay = 60
         visibility_timeout = base_delay * (10 ** (receive_count - 1))
         # Cap at 15 minutes (900 seconds) just to be safe
