@@ -107,7 +107,7 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-            - name: Package Lambda Functions
+      - name: Package Lambda Functions
         run: |
           # Create deployment package for API Lambda
           mkdir -p package/api package/worker
