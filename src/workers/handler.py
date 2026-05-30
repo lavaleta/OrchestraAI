@@ -1,7 +1,7 @@
 import json
 import time
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.core.config import settings, dynamodb_client, sqs_client
 from workers.services.ai_service import AIServiceFactory, RateLimitException
@@ -35,9 +35,9 @@ def change_message_visibility(
 def update_job_status(
     job_id: str,
     status: str,
-    result: Dict = None,
-    metrics: Dict = None,
-    error_reason: str = None,
+    result: Optional[Dict] = None,
+    metrics: Optional[Dict] = None,
+    error_reason: Optional[str] = None,
 ):
     """Updates the job record in DynamoDB"""
     timestamp = str(int(time.time()))
