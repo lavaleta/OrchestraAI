@@ -85,7 +85,7 @@ def test_worker_rate_limit_backoff(mock_change_visibility, mock_get_provider, dy
     mock_get_provider.return_value = mock_provider
     
     # Simulate the 2nd attempt from SQS (receive_count = 2)
-    # Expected backoff: 30 * (2^(2-1)) = 60 seconds
+    # Expected backoff: 60 * (10^(2-1)) = 600 seconds
     event = create_mock_sqs_event(job_id, receive_count=2)
     
     response = sqs_handler(event, None)
@@ -94,11 +94,11 @@ def test_worker_rate_limit_backoff(mock_change_visibility, mock_get_provider, dy
     assert len(response["batchItemFailures"]) == 1
     assert response["batchItemFailures"][0]["itemIdentifier"] == f"msg-{job_id}"
     
-    # Assert: It dynamically extended the visibility timeout to 60 seconds
+    # Assert: It dynamically extended the visibility timeout to 600 seconds
     mock_change_visibility.assert_called_once_with(
         "handle-123", 
         os.environ["SQS_QUEUE_URL"], 
-        60
+        600
     )
     
     # Assert: Status in DDB is still PROCESSING (not FAILED, because it's retrying)

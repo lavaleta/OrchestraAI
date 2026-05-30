@@ -1,7 +1,12 @@
 import os
+import sys
+from pathlib import Path
 import pytest
 import boto3
 from moto import mock_aws
+
+# Add the 'src' directory to the Python path so tests can import our app and workers
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 # Set environment variables BEFORE importing the app
 os.environ["ENVIRONMENT"] = "test"
