@@ -8,10 +8,10 @@ terraform {
   required_version = ">= 1.5.0"
 
   # Terraform state must be stored remotely for CI/CD pipelines
-  backend "s3" {
+    backend "s3" {
     bucket = "orchestra-ai-terraform-state-demo-deploy"
     key    = "dev/terraform.tfstate"
-    region = "eu-east-1"
+    region = "us-east-1"
     
     # Optional: create the DynamoDB lock table
     dynamodb_table = "terraform-lock"
