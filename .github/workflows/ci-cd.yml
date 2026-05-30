@@ -68,7 +68,7 @@ jobs:
           working_directory: terraform
         continue-on-error: true
 
-            - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-orchestra-ai-role
