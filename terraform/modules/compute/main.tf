@@ -84,12 +84,16 @@ resource "aws_lambda_function" "api" {
   filename         = data.archive_file.dummy_api.output_path
   source_code_hash = data.archive_file.dummy_api.output_base64sha256
 
-  environment {
+    environment {
     variables = {
       ENVIRONMENT   = var.environment
       JOBS_TABLE    = var.dynamodb_table_name
       SQS_QUEUE_URL = var.sqs_queue_url
     }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
   }
 }
 
@@ -181,11 +185,15 @@ resource "aws_lambda_function" "worker" {
   filename         = data.archive_file.dummy_worker.output_path
   source_code_hash = data.archive_file.dummy_worker.output_base64sha256
 
-  environment {
+    environment {
     variables = {
       ENVIRONMENT   = var.environment
       JOBS_TABLE    = var.dynamodb_table_name
     }
+  }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
   }
 }
 

@@ -107,20 +107,18 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Package Lambda Functions
+            - name: Package Lambda Functions
         run: |
           # Create deployment package for API Lambda
           mkdir -p package/api package/worker
           pip install -r requirements.txt -t package/api/ || true
-          cp -r src/app package/api/ || true
-          cd package/api && zip -r ../../terraform/modules/compute/dummy_api.zip . || true && cd ../..
+          cp -r src/* package/api/ || true
+          cd package/api && zip -r ../../api_deployment.zip . || true && cd ../..
 
           # Create deployment package for Worker Lambda
           pip install -r requirements.txt -t package/worker/ || true
-          cp -r src/workers package/worker/ || true
-          mkdir -p package/worker/app/core
-          cp -r src/app/core/* package/worker/app/core/ || true # Copy shared config
-          cd package/worker && zip -r ../../terraform/modules/compute/dummy_worker.zip . || true && cd ../..
+          cp -r src/* package/worker/ || true
+          cd package/worker && zip -r ../../worker_deployment.zip . || true && cd ../..
 
       - name: Terraform Init
         working-directory: ./terraform
@@ -129,3 +127,15 @@ jobs:
       - name: Terraform Apply
         working-directory: ./terraform
         run: terraform apply -var="environment=dev" -auto-approve
+
+      - name: Update Lambda Code (Force Deploy)
+        run: |
+          aws lambda update-function-code \
+            --function-name orchestra-ai-api-dev \
+            --zip-file fileb://api_deployment.zip \
+            --region ${{ env.AWS_REGION }}
+            
+          aws lambda update-function-code \
+            --function-name orchestra-ai-worker-dev \
+            --zip-file fileb://worker_deployment.zip \
+            --region ${{ env.AWS_REGION }}
