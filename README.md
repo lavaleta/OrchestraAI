@@ -4,7 +4,7 @@
 
 OrchestraAI is a multi-tenant, asynchronous API built to reliably process massive text extraction and AI batch jobs without blocking synchronous API threads. It acts as an abstraction and orchestration layer over external LLM providers (OpenAI, Anthropic), handling their inherent latency, strict rate limits, and intermittent timeouts gracefully.
 
-This project is built as a demo — focusing on decoupling, resiliency, Infrastructure as Code (IaC), and strict failure handling.
+This project demonstrates **production-grade backend and platform engineering patterns**—focusing on decoupling, resiliency, distributed tracing, Infrastructure as Code (IaC), and strict failure handling. It is designed to bridge the gap between simple API wrappers and resilient, distributed AI platforms capable of scaling safely.
 
 ---
 
@@ -51,22 +51,23 @@ graph TD
 
 This system is engineered for production-grade reliability, addressing the failure modes commonly ignored in basic "AI wrapper" applications.
 
-### 1. Idempotency Insurance
-External systems inevitably experience network blips, leading to duplicate client requests. The ingestion API implements strict idempotency using DynamoDB conditional checks. If a request with an existing `idempotency_key` is received, the system returns the existing `job_id` instead of spinning up duplicate, costly downstream compute.
+### 1. Idempotency 
+Network interruptions can lead to duplicate client requests. To prevent processing identical LLM payloads multiple times, the ingestion API implements standard HTTP idempotency via the `X-Idempotency-Key` header, backed by a DynamoDB Global Secondary Index.
 
-### 2. Resiliency & Dead Letter Queues (DLQs)
-If an LLM payload is corrupted or causes repeated execution failures, it should not poison the queue or stall the system. After `maxReceiveCount` failures, SQS automatically routes the dead message to a DLQ. This allows operations teams to inspect the payload, patch the worker logic, and re-drive the messages without data loss.
+### 2. Distributed Tracing & Observability
+The API layer utilizes Python `contextvars` to safely generate and propagate `X-Correlation-ID`s across asynchronous event-loop boundaries. This ID is passed into the SQS payload, injected into all CloudWatch logs, and permanently attached to the job record in DynamoDB for end-to-end request tracing.
 
-### 3. Smart Rate-Limiting & Backoff
-LLM APIs enforce strict Token Per Minute (TPM) and Requests Per Minute (RPM) limits. The Worker Lambda is designed to trap `HTTP 429 Too Many Requests` exceptions. Instead of failing the job, it leverages SQS visibility timeouts to return the message to the queue for a retry after an exponential backoff period.
+### 3. Dynamic Rate-Limiting & Exponential Backoff
+External AI APIs enforce strict Token Per Minute (TPM) limits. When the Worker Lambda encounters an `HTTP 429 Too Many Requests` response, it calculates an exponential backoff (`$60s \times 10^{n-1}`) using the SQS `ApproximateReceiveCount`. It then explicitly extends the SQS message visibility timeout to delay the retry, acting as a dynamic pressure valve for the architecture.
 
-### 4. Cost Observability
-Every LLM execution costs money. The Worker Lambda strips input/output token metrics from the AI provider's response, calculates the exact cost against a predefined pricing matrix, and writes it back to DynamoDB. This enables business-level observability per tenant and per job.
+### 4. SQS Partial Batch Failures
+To maximize throughput, the SQS-Lambda trigger processes messages in batches of 5. If a single message fails, the worker catches the error and utilizes the AWS `batchItemFailures` response format to ensure only the failed message is retried, preventing successful messages from being wastefully reprocessed.
 
-### 5. Infrastructure as Code (IaC) & Least Privilege
-The entire AWS footprint is codified using **Terraform**. IAM roles are strictly scoped following the principle of least privilege:
-* **API Lambda**: Only possesses `dynamodb:PutItem`, `dynamodb:GetItem`, and `sqs:SendMessage`.
-* **Worker Lambda**: Only possesses `dynamodb:UpdateItem`, `sqs:ReceiveMessage`, and access to specific decryption keys in SSM.
+### 5. Dependency Inversion & Secrets Management
+The core processing logic depends on an abstract `AIProvider` interface, allowing the system to instantly swap between Gemini, Claude, or OpenAI models via an `AIServiceFactory`. API keys are fetched at runtime from **AWS Systems Manager (SSM) Parameter Store** (`SecureString`) and cached globally within the Lambda execution context to eliminate network latency on warm starts.
+
+### 6. Infrastructure as Code (IaC) & Least Privilege
+The entire AWS footprint is codified using **Terraform**. IAM roles are strictly scoped following the principle of least privilege. For example, the API Lambda can only `PutItem` and `SendMessage`—it has no permissions to read SQS queues or delete tables.
 
 ---
 
@@ -86,12 +87,18 @@ The entire AWS footprint is codified using **Terraform**. IAM roles are strictly
 
 ---
 
-## 🚀 Deployment & Operations
+## 🧪 Automated Testing
 
-OrchestraAI utilizes a fully automated CI/CD pipeline via GitHub Actions.
+The `pytest` suite utilizes `moto` to mock AWS services locally, allowing for rapid execution without cloud dependencies or costs. Key behaviors tested include:
+1. **Idempotency Verification**: Validating that duplicate keys result in a single SQS message enqueue.
+2. **Backoff Verification**: Proving that `429` errors correctly mutate SQS message visibility timeouts according to the exponential backoff formula.
 
-1. **Continuous Integration**: On every PR, the pipeline runs code formatters, security vulnerability checks, and the `pytest` suite using `moto` to mock AWS services. It also verifies `terraform plan` and uses `tfsec` to ensure infrastructure security compliance.
-2. **Continuous Deployment**: Upon merging to `main`, the pipeline automatically packages the Python code into Lambda deployment artifacts and executes `terraform apply -auto-approve` to securely update the cloud environment.
+---
 
-### Local Development
-*(Detailed setup instructions will be added as the codebase grows).*
+## 🚀 CI/CD Pipeline (GitHub Actions)
+
+OrchestraAI utilizes a fully automated, OIDC-secured CI/CD pipeline via GitHub Actions.
+
+1. **Security & Quality**: On every PR, the pipeline runs `black` formatting, `flake8` linting, and executes the `pytest` suite. It also runs `tfsec` to statically analyze the Terraform code for cloud security vulnerabilities.
+2. **Secure AWS Authentication**: The pipeline uses OpenID Connect (OIDC) to temporarily assume an explicitly scoped AWS IAM role, avoiding the use of long-lived static credentials.
+3. **Continuous Deployment**: Upon merging to `main`, the pipeline packages the Python code natively for `manylinux2014_x86_64` (Amazon Linux), synthesizes the Terraform plan, and deploys the infrastructure and Lambda code to the live AWS environment.
