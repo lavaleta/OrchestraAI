@@ -107,16 +107,32 @@ jobs:
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - name: Package Lambda Functions
+            - name: Package Lambda Functions
         run: |
           # Create deployment package for API Lambda
           mkdir -p package/api package/worker
-          pip install -r requirements.txt -t package/api/ || true
+          
+          # Install dependencies specifically for Lambda's Amazon Linux environment (x86_64)
+          pip install \
+            --platform manylinux2014_x86_64 \
+            --target package/api/ \
+            --implementation cp \
+            --python-version 3.11 \
+            --only-binary=:all: \
+            -r requirements.txt || true
+            
           cp -r src/* package/api/ || true
           cd package/api && zip -r ../../api_deployment.zip . || true && cd ../..
 
           # Create deployment package for Worker Lambda
-          pip install -r requirements.txt -t package/worker/ || true
+          pip install \
+            --platform manylinux2014_x86_64 \
+            --target package/worker/ \
+            --implementation cp \
+            --python-version 3.11 \
+            --only-binary=:all: \
+            -r requirements.txt || true
+            
           cp -r src/* package/worker/ || true
           cd package/worker && zip -r ../../worker_deployment.zip . || true && cd ../..
 
